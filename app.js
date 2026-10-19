@@ -12,7 +12,7 @@
 // 6. Create a Firestore Database (start in test mode for now)
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBwaN1MaiTpRa3xmwh70FxdwDqsmqk9SI4",
+  apiKey: "xxx",
   authDomain: "mindful-journal-c079b.firebaseapp.com",
   projectId: "mindful-journal-c079b",
   storageBucket: "mindful-journal-c079b.firebasestorage.app",

@@ -258,26 +258,83 @@ function toggleRecording() {
 }
 
 // ========== Text-to-Speech ==========
-function speakText(text) {
-  if (currentUtterance) {
-    speechSynthesis.cancel();
-  }
-  currentUtterance = new SpeechSynthesisUtterance(text);
-  currentUtterance.rate = 0.95;
-  currentUtterance.pitch = 1;
-  currentUtterance.volume = 1;
-  
-  // Prefer a calm voice if available
+function getBestVoice() {
   const voices = speechSynthesis.getVoices();
-  const preferred = voices.find(v => 
-    v.name.includes('Samantha') || 
-    v.name.includes('Google UK English Female') ||
-    v.name.includes('Karen') ||
-    (v.lang.startsWith('en') && v.name.toLowerCase().includes('female'))
+  if (!voices || voices.length === 0) return null;
+
+  // Priority list: most natural / neural voices first
+  const preferredNames = [
+    // Apple / macOS / iOS high-quality
+    'Samantha', 'Karen', 'Moira', 'Tessa', 'Fiona', 'Victoria',
+    // Google / Chrome
+    'Google UK English Female', 'Google US English', 'Google UK English Male',
+    // Microsoft Edge neural voices
+    'Microsoft Aria Online (Natural) - English (United States)',
+    'Microsoft Jenny Online (Natural) - English (United States)',
+    'Microsoft Guy Online (Natural) - English (United States)',
+    'Microsoft Sonia Online (Natural) - English (United Kingdom)',
+    'Microsoft Natasha Online (Natural) - English (Australia)',
+    'Microsoft Ana Online (Natural) - English (United States)',
+    // Other good ones
+    'Samantha (Enhanced)', 'Allison', 'Susan', 'Zira'
+  ];
+
+  // 1. Exact or partial match from preferred list
+  for (const name of preferredNames) {
+    const match = voices.find(v => v.name === name || v.name.includes(name));
+    if (match) return match;
+  }
+
+  // 2. Any English voice that looks neural / natural / enhanced
+  const natural = voices.find(v =>
+    v.lang.startsWith('en') &&
+    (v.name.toLowerCase().includes('natural') ||
+     v.name.toLowerCase().includes('neural') ||
+     v.name.toLowerCase().includes('enhanced') ||
+     v.name.toLowerCase().includes('premium'))
   );
-  if (preferred) currentUtterance.voice = preferred;
+  if (natural) return natural;
+
+  // 3. Prefer female English voices (usually warmer for this use-case)
+  const femaleEn = voices.find(v =>
+    v.lang.startsWith('en') &&
+    (v.name.toLowerCase().includes('female') ||
+     v.name.toLowerCase().includes('woman') ||
+     ['samantha','karen','moira','tessa','fiona','victoria','zira','susan','allison','aria','jenny','sonia','natasha'].some(n => v.name.toLowerCase().includes(n)))
+  );
+  if (femaleEn) return femaleEn;
+
+  // 4. Any English voice
+  return voices.find(v => v.lang.startsWith('en')) || voices[0];
+}
+
+function speakText(text) {
+  if (!text || !text.trim()) return;
+
+  // Cancel any ongoing speech
+  speechSynthesis.cancel();
+
+  // Make the text sound more natural by adding a short pause between summary and question
+  // (many browsers respect the comma / period timing better with slight restructuring)
+  const cleaned = text
+    .replace(/\s+/g, ' ')
+    .replace(/([.!?])\s+/g, '$1 ')   // normalize spacing after punctuation
+    .trim();
+
+  const utterance = new SpeechSynthesisUtterance(cleaned);
   
-  speechSynthesis.speak(currentUtterance);
+  // More natural conversational settings
+  utterance.rate = 0.92;      // slightly slower = more thoughtful
+  utterance.pitch = 1.05;     // very slight lift keeps it warm, not flat
+  utterance.volume = 1;
+
+  const voice = getBestVoice();
+  if (voice) {
+    utterance.voice = voice;
+  }
+
+  currentUtterance = utterance;
+  speechSynthesis.speak(utterance);
 }
 
 // ========== AI Companion ("The Mindful Listener") ==========
@@ -486,7 +543,7 @@ function renderEntries() {
         <p style="margin-top:8px;font-style:italic;opacity:0.9">“${escapeHtml(entry.question)}”</p>
       </div>
       <div class="entry-actions">
-        <button class="btn text tts-entry" data-text="${escapeHtml(entry.summary + ' ' + entry.question)}">🔊 Listen</button>
+        <button class="btn text tts-entry" data-text="${escapeHtml(entry.summary + ' ... ' + entry.question)}">🔊 Listen</button>
         <button class="btn text delete-entry" data-id="${entry.id}">Delete</button>
       </div>
     `;
@@ -561,7 +618,10 @@ function initEvents() {
 
   // AI section
   ttsBtn.addEventListener('click', () => {
-    const text = `${aiSummaryEl.textContent} ${aiQuestionEl.textContent}`;
+    // Add a natural conversational pause between the reflection and the question
+    const summary = aiSummaryEl.textContent.trim();
+    const question = aiQuestionEl.textContent.trim();
+    const text = `${summary} ... ${question}`;
     speakText(text);
   });
   dismissAiBtn.addEventListener('click', () => {
@@ -584,10 +644,14 @@ function initEvents() {
   themeToggle.addEventListener('click', toggleTheme);
   logoutBtn.addEventListener('click', logout);
 
-  // Load voices for TTS
+  // Pre-load voices for TTS (browsers often load them asynchronously)
   if (speechSynthesis.onvoiceschanged !== undefined) {
-    speechSynthesis.onvoiceschanged = () => {};
+    speechSynthesis.onvoiceschanged = () => {
+      // Voices are now available — getBestVoice() will pick the best one
+    };
   }
+  // Force a voice list load on some browsers
+  speechSynthesis.getVoices();
 }
 
 // ========== Boot ==========

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mindful Journal — Voice-First AI Companion</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Auth Screen -->
+  <div id="auth-screen" class="screen active">
+    <div class="auth-container">
+      <div class="logo">
+        <div class="logo-icon">◈</div>
+        <h1>Mindful Journal</h1>
+        <p class="tagline">Your private voice-first AI companion</p>
+      </div>
+      
+      <div class="auth-tabs">
+        <button class="tab active" data-tab="login">Log In</button>
+        <button class="tab" data-tab="signup">Sign Up</button>
+      </div>
+      
+      <form id="login-form" class="auth-form active">
+        <div class="form-group">
+          <label for="login-username">Username</label>
+          <input type="text" id="login-username" placeholder="Enter username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" placeholder="Enter password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn primary">Log In</button>
+        <p class="auth-note">All data stays on your device. Private by design.</p>
+      </form>
+      
+      <form id="signup-form" class="auth-form">
+        <div class="form-group">
+          <label for="signup-username">Username</label>
+          <input type="text" id="signup-username" placeholder="Choose a username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="signup-password">Password</label>
+          <input type="password" id="signup-password" placeholder="Create a password" required autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label for="signup-confirm">Confirm Password</label>
+          <input type="password" id="signup-confirm" placeholder="Confirm password" required autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn primary">Create Account</button>
+        <p class="auth-note">Your journal never leaves this browser.</p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main App Screen -->
+  <div id="app-screen" class="screen">
+    <header class="app-header">
+      <div class="header-left">
+        <span class="logo-small">◈</span>
+        <span class="app-title">Mindful Journal</span>
+      </div>
+      <div class="header-right">
+        <button id="theme-toggle" class="icon-btn" title="Toggle theme">◐</button>
+        <button id="logout-btn" class="icon-btn" title="Log out">⏻</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <!-- Journal Entry Area -->
+      <section class="entry-section">
+        <div class="entry-card">
+          <div class="entry-header">
+            <h2>What's on your mind?</h2>
+            <span class="date-display" id="current-date"></span>
+          </div>
+          
+          <div class="voice-area">
+            <button id="mic-btn" class="mic-button" aria-label="Tap to speak">
+              <span class="mic-icon">🎙️</span>
+              <span class="mic-label">Tap to Speak</span>
+            </button>
+            <div id="recording-status" class="recording-status hidden">
+              <span class="pulse"></span>
+              <span>Listening...</span>
+            </div>
+          </div>
+
+          <div class="transcript-area">
+            <textarea 
+              id="transcript" 
+              placeholder="Your thoughts will appear here... or type freely."
+              rows="5"
+            ></textarea>
+            <div class="transcript-actions">
+              <button id="clear-btn" class="btn text">Clear</button>
+              <button id="save-btn" class="btn primary" disabled>Save Entry</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- AI Response Preview (shown after save) -->
+      <section id="ai-response-section" class="ai-section hidden">
+        <div class="ai-card">
+          <div class="ai-header">
+            <span class="ai-badge">The Mindful Listener</span>
+            <button id="tts-btn" class="icon-btn" title="Read aloud">🔊</button>
+          </div>
+          <div class="mood-tag" id="mood-tag"></div>
+          <p class="ai-summary" id="ai-summary"></p>
+          <div class="follow-up">
+            <span class="follow-label">Reflect:</span>
+            <p id="ai-question"></p>
+          </div>
+          <button id="dismiss-ai" class="btn text">Continue journaling</button>
+        </div>
+      </section>
+
+      <!-- Filters -->
+      <section class="filters-section">
+        <div class="filters">
+          <select id="mood-filter">
+            <option value="all">All moods</option>
+            <option value="Grateful">Grateful</option>
+            <option value="Hopeful">Hopeful</option>
+            <option value="Calm">Calm</option>
+            <option value="Anxious">Anxious</option>
+            <option value="Overwhelmed">Overwhelmed</option>
+            <option value="Sad">Sad</option>
+            <option value="Reflective">Reflective</option>
+            <option value="Energized">Energized</option>
+          </select>
+          <input type="date" id="date-from" title="From date">
+          <input type="date" id="date-to" title="To date">
+          <button id="clear-filters" class="btn text">Clear</button>
+        </div>
+      </section>
+
+      <!-- Entry Feed -->
+      <section class="feed-section">
+        <h3 class="feed-title">Your Journal</h3>
+        <div id="entries-list" class="entries-list">
+          <!-- Entries will be rendered here -->
+        </div>
+        <div id="empty-state" class="empty-state">
+          <p>No entries yet. Tap the mic and share what's on your mind.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

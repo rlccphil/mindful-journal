@@ -1,63 +1,94 @@
 # Mindful Journal — Voice-First AI Companion
 
-A private, browser-based journaling web app designed for zero-distraction voice journaling with an empathetic AI companion.
+A private, voice-first AI journaling web app with **cross-device sync**.
 
 ## Features
 
-### 1. Authentication & Privacy
-- Simple username/password sign-up and log-in
-- All data stored exclusively in the browser’s `localStorage`
-- No server, no cloud, no external AI calls — private by design
+- Email/password authentication (works on phone + desktop)
+- Voice-to-text using Web Speech API
+- AI companion (“The Mindful Listener”) – empathetic summary, mood tag, CBT question
+- Real-time sync of journal entries via Firebase
+- Dark / Light theme
+- Text-to-Speech for AI responses
+- Filter by mood or date
 
-### 2. Voice-to-Text Recording
-- Prominent **Tap to Speak** microphone button
-- Uses the free, built-in **Web Speech API** for real-time transcription
-- Manual editing of the transcript before saving
-- Works best in Chrome, Edge, Safari (desktop & mobile)
+## Setup (Required – 5 minutes)
 
-### 3. AI Companion — “The Mindful Listener”
-When you save an entry, a local analysis engine generates:
-- A warm, 2-sentence empathetic summary
-- A dominant mood tag (Grateful, Hopeful, Calm, Anxious, Overwhelmed, Sad, Reflective, Energized)
-- One targeted CBT / mindfulness follow-up question
+### 1. Create a Firebase project
 
-### 4. Entry Feed & History
-- Beautiful timeline of past entries
-- Shows date, mood badge, original text, and AI response
-- Filter by mood or date range
-- Delete entries permanently
-- Listen to any AI response with Text-to-Speech
+1. Go to [Firebase Console](https://console.firebase.google.com/)
+2. Click **Add project** → give it a name (e.g. `mindful-journal`)
+3. Disable Google Analytics if you want (optional)
+4. Click **Create project**
 
-### 5. Clean UI/UX
-- Minimalist, calming design
-- Dark / Light theme toggle
-- Fully responsive (optimized for mobile)
-- Text-to-Speech button for AI responses
+### 2. Register a Web app
 
-## How to Run
+1. On the project overview, click the **Web** icon (`</>`)
+2. Nickname: `Mindful Journal`
+3. Copy the `firebaseConfig` object
 
-Simply open `index.html` in a modern browser (Chrome recommended for best speech recognition support).
+### 3. Enable Authentication
 
-```bash
-# From the project folder
-open index.html
-# or
-python3 -m http.server 8080
-# then visit http://localhost:8080
+1. In the left menu go to **Build → Authentication**
+2. Click **Get started**
+3. Enable **Email/Password** → Save
+
+### 4. Create Firestore Database
+
+1. Go to **Build → Firestore Database**
+2. Click **Create database**
+3. Start in **test mode** (for now)
+4. Choose a location close to you → Enable
+
+### 5. Add your config to the app
+
+Open `app.js` and replace the placeholder:
+
+```js
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
 ```
+
+with the real values from step 2.
+
+### 6. (Recommended) Secure Firestore rules
+
+After testing, go to **Firestore → Rules** and use:
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /entries/{entryId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.uid;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.uid;
+    }
+  }
+}
+```
+
+## Deploy
+
+Upload all files to your GitHub repo and enable **GitHub Pages**  
+(Settings → Pages → Deploy from branch `main`).
+
+Your app will be live at:  
+`https://rlccphil.github.io/mindful-journal/`
+
+## Files
+
+- `index.html`
+- `styles.css`
+- `app.js` ← put your Firebase config here
+- `og-image.png`
+- `README.md`
 
 ## Privacy Note
 
-Everything stays on your device. There are no network requests for AI analysis or data storage. The “AI” is a carefully crafted local keyword + template system designed to feel supportive while remaining fully offline.
-
-## Browser Support
-
-| Feature              | Chrome | Edge | Safari | Firefox |
-|----------------------|--------|------|--------|---------|
-| Speech Recognition   | ✅     | ✅   | ✅     | ❌      |
-| Text-to-Speech       | ✅     | ✅   | ✅     | ✅      |
-| localStorage         | ✅     | ✅   | ✅     | ✅      |
-
-## License
-
-MIT — feel free to adapt for personal or commercial use.
+Entries are stored in **your** Firebase project. Only the logged-in user can read/write their own entries (once you apply the security rules above).

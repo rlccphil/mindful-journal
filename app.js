@@ -1,14 +1,37 @@
 /**
  * Mindful Journal — Voice-First AI Companion
- * Private by design: all data stays in the browser (localStorage).
+ * With Firebase Auth + Firestore for cross-device sync
  */
+
+// ========== FIREBASE CONFIG ==========
+// 1. Go to https://console.firebase.google.com/
+// 2. Create a new project (or use existing)
+// 3. Add a Web app
+// 4. Copy the config object and paste it below
+// 5. Enable Authentication → Email/Password
+// 6. Create a Firestore Database (start in test mode for now)
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBwaN1MaiTpRa3xmwh70FxdwDqsmqk9SI4",
+  authDomain: "mindful-journal-c079b.firebaseapp.com",
+  projectId: "mindful-journal-c079b",
+  storageBucket: "mindful-journal-c079b.firebasestorage.app",
+  messagingSenderId: "81303258573",
+  appId: "1:81303258573:web:baa51c90e118e1623e7084",
+  measurementId: "G-D7Z0BEYGC5"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
 
 // ========== State ==========
 let currentUser = null;
 let recognition = null;
 let isRecording = false;
-let speechSynthesis = window.speechSynthesis;
 let currentUtterance = null;
+let unsubscribeEntries = null;
 
 // ========== DOM Elements ==========
 const authScreen = document.getElementById('auth-screen');
@@ -39,41 +62,10 @@ const currentDateEl = document.getElementById('current-date');
 const toastEl = document.getElementById('toast');
 
 // ========== Utilities ==========
-function showToast(message, duration = 2800) {
+function showToast(message, duration = 3000) {
   toastEl.textContent = message;
   toastEl.classList.remove('hidden');
   setTimeout(() => toastEl.classList.add('hidden'), duration);
-}
-
-function hashPassword(password) {
-  // Simple hash for demo privacy (not production-grade)
-  let hash = 0;
-  for (let i = 0; i < password.length; i++) {
-    const char = password.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  return 'h_' + Math.abs(hash).toString(36);
-}
-
-function getUsers() {
-  return JSON.parse(localStorage.getItem('mj_users') || '{}');
-}
-
-function saveUsers(users) {
-  localStorage.setItem('mj_users', JSON.stringify(users));
-}
-
-function getEntriesKey() {
-  return `mj_entries_${currentUser}`;
-}
-
-function getEntries() {
-  return JSON.parse(localStorage.getItem(getEntriesKey()) || '[]');
-}
-
-function saveEntries(entries) {
-  localStorage.setItem(getEntriesKey(), JSON.stringify(entries));
 }
 
 function formatDate(dateStr) {
@@ -96,65 +88,86 @@ function formatToday() {
   });
 }
 
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 // ========== Auth ==========
 function showAuth() {
   authScreen.classList.add('active');
   appScreen.classList.remove('active');
   currentUser = null;
+  if (unsubscribeEntries) {
+    unsubscribeEntries();
+    unsubscribeEntries = null;
+  }
 }
 
 function showApp() {
   authScreen.classList.remove('active');
   appScreen.classList.add('active');
   currentDateEl.textContent = formatToday();
-  renderEntries();
+  listenToEntries();
 }
 
-function login(username, password) {
-  const users = getUsers();
-  const hashed = hashPassword(password);
-  if (users[username] && users[username] === hashed) {
-    currentUser = username;
-    localStorage.setItem('mj_session', username);
+async function login(email, password) {
+  try {
+    showToast('Signing in...');
+    await auth.signInWithEmailAndPassword(email, password);
+  } catch (error) {
+    console.error(error);
+    let msg = 'Login failed';
+    if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+      msg = 'Invalid email or password';
+    } else if (error.code === 'auth/invalid-email') {
+      msg = 'Invalid email address';
+    } else if (error.code === 'auth/too-many-requests') {
+      msg = 'Too many attempts. Try again later.';
+    }
+    showToast(msg);
+  }
+}
+
+async function signup(email, password) {
+  try {
+    showToast('Creating account...');
+    await auth.createUserWithEmailAndPassword(email, password);
+  } catch (error) {
+    console.error(error);
+    let msg = 'Sign up failed';
+    if (error.code === 'auth/email-already-in-use') {
+      msg = 'Email already registered. Try logging in.';
+    } else if (error.code === 'auth/weak-password') {
+      msg = 'Password should be at least 6 characters';
+    } else if (error.code === 'auth/invalid-email') {
+      msg = 'Invalid email address';
+    }
+    showToast(msg);
+  }
+}
+
+async function logout() {
+  try {
+    await auth.signOut();
+    transcriptEl.value = '';
+    aiSection.classList.add('hidden');
+    showToast('Logged out');
+  } catch (error) {
+    showToast('Logout failed');
+  }
+}
+
+auth.onAuthStateChanged((user) => {
+  if (user) {
+    currentUser = user;
     showApp();
-    showToast(`Welcome back, ${username}`);
-    return true;
+    showToast('Welcome back');
+  } else {
+    showAuth();
   }
-  showToast('Invalid username or password');
-  return false;
-}
-
-function signup(username, password) {
-  const users = getUsers();
-  if (users[username]) {
-    showToast('Username already exists');
-    return false;
-  }
-  if (username.length < 3) {
-    showToast('Username must be at least 3 characters');
-    return false;
-  }
-  if (password.length < 4) {
-    showToast('Password must be at least 4 characters');
-    return false;
-  }
-  users[username] = hashPassword(password);
-  saveUsers(users);
-  currentUser = username;
-  localStorage.setItem('mj_session', username);
-  showApp();
-  showToast('Account created. Your journal is private to this device.');
-  return true;
-}
-
-function logout() {
-  localStorage.removeItem('mj_session');
-  currentUser = null;
-  transcriptEl.value = '';
-  aiSection.classList.add('hidden');
-  showAuth();
-  showToast('Logged out');
-}
+});
 
 // ========== Theme ==========
 function initTheme() {
@@ -170,13 +183,12 @@ function toggleTheme() {
   localStorage.setItem('mj_theme', theme);
 }
 
-// ========== Speech Recognition (Web Speech API) ==========
+// ========== Speech Recognition ==========
 function initSpeechRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
     micBtn.disabled = true;
     micBtn.querySelector('.mic-label').textContent = 'Not supported';
-    showToast('Speech recognition not supported in this browser');
     return;
   }
 
@@ -193,36 +205,29 @@ function initSpeechRecognition() {
   };
 
   recognition.onresult = (event) => {
-    let interim = '';
     let final = '';
     for (let i = event.resultIndex; i < event.results.length; i++) {
-      const transcript = event.results[i][0].transcript;
       if (event.results[i].isFinal) {
-        final += transcript + ' ';
-      } else {
-        interim += transcript;
+        final += event.results[i][0].transcript + ' ';
       }
     }
     if (final) {
       transcriptEl.value = (transcriptEl.value + ' ' + final).trim();
       updateSaveButton();
     }
-    // Optionally show interim in placeholder or a temporary overlay — keep simple
   };
 
   recognition.onerror = (event) => {
-    console.warn('Speech error:', event.error);
     if (event.error === 'not-allowed') {
       showToast('Microphone permission denied');
     } else if (event.error !== 'aborted') {
-      showToast('Speech recognition error: ' + event.error);
+      showToast('Speech error: ' + event.error);
     }
     stopRecording();
   };
 
   recognition.onend = () => {
     if (isRecording) {
-      // Auto-restart if still meant to be recording (some browsers stop early)
       try { recognition.start(); } catch (e) { stopRecording(); }
     } else {
       stopRecording();
@@ -232,11 +237,7 @@ function initSpeechRecognition() {
 
 function startRecording() {
   if (!recognition) return;
-  try {
-    recognition.start();
-  } catch (e) {
-    // Already started
-  }
+  try { recognition.start(); } catch (e) {}
 }
 
 function stopRecording() {
@@ -250,11 +251,8 @@ function stopRecording() {
 }
 
 function toggleRecording() {
-  if (isRecording) {
-    stopRecording();
-  } else {
-    startRecording();
-  }
+  if (isRecording) stopRecording();
+  else startRecording();
 }
 
 // ========== Text-to-Speech ==========
@@ -262,93 +260,65 @@ function getBestVoice() {
   const voices = speechSynthesis.getVoices();
   if (!voices || voices.length === 0) return null;
 
-  // Priority list: most natural / neural voices first
   const preferredNames = [
-    // Apple / macOS / iOS high-quality
     'Samantha', 'Karen', 'Moira', 'Tessa', 'Fiona', 'Victoria',
-    // Google / Chrome
-    'Google UK English Female', 'Google US English', 'Google UK English Male',
-    // Microsoft Edge neural voices
+    'Google UK English Female', 'Google US English',
     'Microsoft Aria Online (Natural) - English (United States)',
     'Microsoft Jenny Online (Natural) - English (United States)',
-    'Microsoft Guy Online (Natural) - English (United States)',
     'Microsoft Sonia Online (Natural) - English (United Kingdom)',
-    'Microsoft Natasha Online (Natural) - English (Australia)',
-    'Microsoft Ana Online (Natural) - English (United States)',
-    // Other good ones
     'Samantha (Enhanced)', 'Allison', 'Susan', 'Zira'
   ];
 
-  // 1. Exact or partial match from preferred list
   for (const name of preferredNames) {
     const match = voices.find(v => v.name === name || v.name.includes(name));
     if (match) return match;
   }
 
-  // 2. Any English voice that looks neural / natural / enhanced
   const natural = voices.find(v =>
     v.lang.startsWith('en') &&
     (v.name.toLowerCase().includes('natural') ||
      v.name.toLowerCase().includes('neural') ||
-     v.name.toLowerCase().includes('enhanced') ||
-     v.name.toLowerCase().includes('premium'))
+     v.name.toLowerCase().includes('enhanced'))
   );
   if (natural) return natural;
 
-  // 3. Prefer female English voices (usually warmer for this use-case)
   const femaleEn = voices.find(v =>
     v.lang.startsWith('en') &&
     (v.name.toLowerCase().includes('female') ||
-     v.name.toLowerCase().includes('woman') ||
-     ['samantha','karen','moira','tessa','fiona','victoria','zira','susan','allison','aria','jenny','sonia','natasha'].some(n => v.name.toLowerCase().includes(n)))
+     ['samantha','karen','moira','tessa','fiona','victoria','zira','aria','jenny'].some(n => v.name.toLowerCase().includes(n)))
   );
   if (femaleEn) return femaleEn;
 
-  // 4. Any English voice
   return voices.find(v => v.lang.startsWith('en')) || voices[0];
 }
 
 function speakText(text) {
   if (!text || !text.trim()) return;
-
-  // Cancel any ongoing speech
   speechSynthesis.cancel();
 
-  // Make the text sound more natural by adding a short pause between summary and question
-  // (many browsers respect the comma / period timing better with slight restructuring)
-  const cleaned = text
-    .replace(/\s+/g, ' ')
-    .replace(/([.!?])\s+/g, '$1 ')   // normalize spacing after punctuation
-    .trim();
-
+  const cleaned = text.replace(/\s+/g, ' ').trim();
   const utterance = new SpeechSynthesisUtterance(cleaned);
-  
-  // More natural conversational settings
-  utterance.rate = 0.92;      // slightly slower = more thoughtful
-  utterance.pitch = 1.05;     // very slight lift keeps it warm, not flat
+  utterance.rate = 0.92;
+  utterance.pitch = 1.05;
   utterance.volume = 1;
 
   const voice = getBestVoice();
-  if (voice) {
-    utterance.voice = voice;
-  }
+  if (voice) utterance.voice = voice;
 
   currentUtterance = utterance;
   speechSynthesis.speak(utterance);
 }
 
-// ========== AI Companion ("The Mindful Listener") ==========
-// Lightweight, privacy-preserving local analysis (no external API calls)
+// ========== AI Companion ==========
 function analyzeEntry(text) {
   const lower = text.toLowerCase();
-  
-  // Mood detection via keyword scoring
+
   const moods = {
     Grateful: ['grateful', 'thankful', 'blessed', 'appreciate', 'thank you', 'thanks', 'lucky', 'fortunate', 'joy', 'happy', 'love', 'wonderful'],
     Hopeful: ['hope', 'hopeful', 'looking forward', 'excited', 'optimistic', 'better', 'future', 'possible', 'believe', 'dream'],
     Calm: ['calm', 'peace', 'peaceful', 'relaxed', 'serene', 'quiet', 'still', 'content', 'centered', 'grounded', 'breathe'],
     Anxious: ['anxious', 'anxiety', 'worried', 'worry', 'nervous', 'stress', 'stressed', 'fear', 'scared', 'panic', 'uneasy', 'tense'],
-    Overwhelmed: ['overwhelm', 'overwhelmed', 'too much', 'can\'t handle', 'exhausted', 'burned out', 'burnout', 'drowning', 'swamped', 'chaos'],
+    Overwhelmed: ['overwhelm', 'overwhelmed', 'too much', "can't handle", 'exhausted', 'burned out', 'burnout', 'drowning', 'swamped', 'chaos'],
     Sad: ['sad', 'down', 'depressed', 'lonely', 'hurt', 'cry', 'crying', 'grief', 'miss', 'empty', 'hopeless', 'blue'],
     Reflective: ['think', 'thinking', 'reflect', 'wonder', 'realize', 'understand', 'learn', 'growth', 'insight', 'meaning'],
     Energized: ['energy', 'energized', 'motivated', 'inspired', 'productive', 'achieved', 'accomplished', 'progress', 'strong', 'powerful']
@@ -359,7 +329,6 @@ function analyzeEntry(text) {
     scores[mood] = keywords.reduce((acc, kw) => acc + (lower.includes(kw) ? 1 : 0), 0);
   }
 
-  // Default if no strong signals
   let dominant = 'Reflective';
   let maxScore = 0;
   for (const [mood, score] of Object.entries(scores)) {
@@ -369,7 +338,6 @@ function analyzeEntry(text) {
     }
   }
 
-  // Empathetic 2-sentence summary templates
   const summaries = {
     Grateful: [
       "There's a warmth in how you're noticing the good things around you. Holding space for gratitude like this can quietly shift the whole day.",
@@ -405,7 +373,6 @@ function analyzeEntry(text) {
     ]
   };
 
-  // CBT / mindfulness follow-up questions
   const questions = {
     Grateful: [
       "What is one small thing from today that you might not usually notice, but that you're glad exists?",
@@ -441,77 +408,99 @@ function analyzeEntry(text) {
     ]
   };
 
-  const summaryPair = summaries[dominant] || summaries.Reflective;
-  const questionList = questions[dominant] || questions.Reflective;
-
-  // Pick based on simple hash of text for variety
   const idx = text.length % 2;
-
   return {
     mood: dominant,
-    summary: summaryPair[idx],
-    question: questionList[idx]
+    summary: (summaries[dominant] || summaries.Reflective)[idx],
+    question: (questions[dominant] || questions.Reflective)[idx]
   };
 }
 
-// ========== Entry Management ==========
+// ========== Entries (Firestore) ==========
 function updateSaveButton() {
   saveBtn.disabled = transcriptEl.value.trim().length === 0;
 }
 
-function saveEntry() {
+async function saveEntry() {
   const text = transcriptEl.value.trim();
-  if (!text) return;
+  if (!text || !currentUser) return;
 
   stopRecording();
+  saveBtn.disabled = true;
+  showToast('Saving...');
 
-  const analysis = analyzeEntry(text);
-  const entry = {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-    text,
-    mood: analysis.mood,
-    summary: analysis.summary,
-    question: analysis.question,
-    createdAt: new Date().toISOString()
-  };
+  try {
+    const analysis = analyzeEntry(text);
+    const entry = {
+      text,
+      mood: analysis.mood,
+      summary: analysis.summary,
+      question: analysis.question,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      uid: currentUser.uid
+    };
 
-  const entries = getEntries();
-  entries.unshift(entry);
-  saveEntries(entries);
+    await db.collection('entries').add(entry);
 
-  // Show AI response
-  moodTagEl.textContent = analysis.mood;
-  moodTagEl.className = 'mood-tag ' + analysis.mood.toLowerCase();
-  aiSummaryEl.textContent = analysis.summary;
-  aiQuestionEl.textContent = analysis.question;
-  aiSection.classList.remove('hidden');
+    moodTagEl.textContent = analysis.mood;
+    moodTagEl.className = 'mood-tag ' + analysis.mood.toLowerCase();
+    aiSummaryEl.textContent = analysis.summary;
+    aiQuestionEl.textContent = analysis.question;
+    aiSection.classList.remove('hidden');
 
-  // Clear input
-  transcriptEl.value = '';
-  updateSaveButton();
-
-  renderEntries();
-  showToast('Entry saved privately');
-  
-  // Scroll AI into view
-  aiSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    transcriptEl.value = '';
+    updateSaveButton();
+    showToast('Entry saved & synced');
+    aiSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (error) {
+    console.error(error);
+    showToast('Failed to save entry');
+    saveBtn.disabled = false;
+  }
 }
 
-function deleteEntry(id) {
-  let entries = getEntries();
-  entries = entries.filter(e => e.id !== id);
-  saveEntries(entries);
-  renderEntries();
-  showToast('Entry deleted');
+async function deleteEntry(id) {
+  try {
+    await db.collection('entries').doc(id).delete();
+    showToast('Entry deleted');
+  } catch (error) {
+    console.error(error);
+    showToast('Failed to delete');
+  }
 }
 
-function renderEntries() {
-  const entries = getEntries();
+function listenToEntries() {
+  if (!currentUser) return;
+  if (unsubscribeEntries) unsubscribeEntries();
+
+  unsubscribeEntries = db.collection('entries')
+    .where('uid', '==', currentUser.uid)
+    .orderBy('createdAt', 'desc')
+    .onSnapshot((snapshot) => {
+      const entries = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        entries.push({
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt ? data.createdAt.toDate().toISOString() : new Date().toISOString()
+        });
+      });
+      renderEntries(entries);
+    }, (error) => {
+      console.error('Listen error:', error);
+      if (error.code === 'failed-precondition') {
+        showToast('Setting up database index... try again in a minute');
+      }
+    });
+}
+
+function renderEntries(allEntries = []) {
   const mood = moodFilter.value;
   const from = dateFrom.value ? new Date(dateFrom.value) : null;
   const to = dateTo.value ? new Date(dateTo.value + 'T23:59:59') : null;
 
-  const filtered = entries.filter(e => {
+  const filtered = allEntries.filter(e => {
     if (mood !== 'all' && e.mood !== mood) return false;
     const d = new Date(e.createdAt);
     if (from && d < from) return false;
@@ -520,12 +509,12 @@ function renderEntries() {
   });
 
   entriesList.innerHTML = '';
-  
+
   if (filtered.length === 0) {
     emptyState.classList.remove('hidden');
     return;
   }
-  
+
   emptyState.classList.add('hidden');
 
   filtered.forEach(entry => {
@@ -550,7 +539,6 @@ function renderEntries() {
     entriesList.appendChild(item);
   });
 
-  // Event listeners for dynamic buttons
   entriesList.querySelectorAll('.delete-entry').forEach(btn => {
     btn.addEventListener('click', () => {
       if (confirm('Delete this entry permanently?')) {
@@ -566,15 +554,8 @@ function renderEntries() {
   });
 }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
 // ========== Event Listeners ==========
 function initEvents() {
-  // Auth tabs
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       tabs.forEach(t => t.classList.remove('active'));
@@ -587,27 +568,29 @@ function initEvents() {
 
   loginForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const username = document.getElementById('login-username').value.trim();
+    const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
-    login(username, password);
+    login(email, password);
   });
 
   signupForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const username = document.getElementById('signup-username').value.trim();
+    const email = document.getElementById('signup-email').value.trim();
     const password = document.getElementById('signup-password').value;
     const confirm = document.getElementById('signup-confirm').value;
     if (password !== confirm) {
       showToast('Passwords do not match');
       return;
     }
-    signup(username, password);
+    if (password.length < 6) {
+      showToast('Password must be at least 6 characters');
+      return;
+    }
+    signup(email, password);
   });
 
-  // Mic
   micBtn.addEventListener('click', toggleRecording);
 
-  // Transcript
   transcriptEl.addEventListener('input', updateSaveButton);
   clearBtn.addEventListener('click', () => {
     transcriptEl.value = '';
@@ -616,41 +599,32 @@ function initEvents() {
   });
   saveBtn.addEventListener('click', saveEntry);
 
-  // AI section
   ttsBtn.addEventListener('click', () => {
-    // Add a natural conversational pause between the reflection and the question
     const summary = aiSummaryEl.textContent.trim();
     const question = aiQuestionEl.textContent.trim();
-    const text = `${summary} ... ${question}`;
-    speakText(text);
+    speakText(summary + ' ... ' + question);
   });
   dismissAiBtn.addEventListener('click', () => {
     aiSection.classList.add('hidden');
     speechSynthesis.cancel();
   });
 
-  // Filters
-  moodFilter.addEventListener('change', renderEntries);
-  dateFrom.addEventListener('change', renderEntries);
-  dateTo.addEventListener('change', renderEntries);
+  moodFilter.addEventListener('change', () => listenToEntries());
+  dateFrom.addEventListener('change', () => listenToEntries());
+  dateTo.addEventListener('change', () => listenToEntries());
   clearFiltersBtn.addEventListener('click', () => {
     moodFilter.value = 'all';
     dateFrom.value = '';
     dateTo.value = '';
-    renderEntries();
+    listenToEntries();
   });
 
-  // Header
   themeToggle.addEventListener('click', toggleTheme);
   logoutBtn.addEventListener('click', logout);
 
-  // Pre-load voices for TTS (browsers often load them asynchronously)
   if (speechSynthesis.onvoiceschanged !== undefined) {
-    speechSynthesis.onvoiceschanged = () => {
-      // Voices are now available — getBestVoice() will pick the best one
-    };
+    speechSynthesis.onvoiceschanged = () => {};
   }
-  // Force a voice list load on some browsers
   speechSynthesis.getVoices();
 }
 
@@ -659,14 +633,6 @@ function boot() {
   initTheme();
   initSpeechRecognition();
   initEvents();
-
-  const session = localStorage.getItem('mj_session');
-  if (session && getUsers()[session]) {
-    currentUser = session;
-    showApp();
-  } else {
-    showAuth();
-  }
 }
 
 boot();

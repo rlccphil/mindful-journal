@@ -45,32 +45,32 @@
       
       <form id="login-form" class="auth-form active">
         <div class="form-group">
-          <label for="login-username">Username</label>
-          <input type="text" id="login-username" placeholder="Enter username" required autocomplete="username">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" placeholder="Enter your email" required autocomplete="email">
         </div>
         <div class="form-group">
           <label for="login-password">Password</label>
           <input type="password" id="login-password" placeholder="Enter password" required autocomplete="current-password">
         </div>
         <button type="submit" class="btn primary">Log In</button>
-        <p class="auth-note">All data stays on your device. Private by design.</p>
+        <p class="auth-note">Your journal syncs securely across your devices.</p>
       </form>
       
       <form id="signup-form" class="auth-form">
         <div class="form-group">
-          <label for="signup-username">Username</label>
-          <input type="text" id="signup-username" placeholder="Choose a username" required autocomplete="username">
+          <label for="signup-email">Email</label>
+          <input type="email" id="signup-email" placeholder="Enter your email" required autocomplete="email">
         </div>
         <div class="form-group">
           <label for="signup-password">Password</label>
-          <input type="password" id="signup-password" placeholder="Create a password" required autocomplete="new-password">
+          <input type="password" id="signup-password" placeholder="Create a password (min 6 chars)" required autocomplete="new-password" minlength="6">
         </div>
         <div class="form-group">
           <label for="signup-confirm">Confirm Password</label>
-          <input type="password" id="signup-confirm" placeholder="Confirm password" required autocomplete="new-password">
+          <input type="password" id="signup-confirm" placeholder="Confirm password" required autocomplete="new-password" minlength="6">
         </div>
         <button type="submit" class="btn primary">Create Account</button>
-        <p class="auth-note">Your journal never leaves this browser.</p>
+        <p class="auth-note">One account works on phone and desktop.</p>
       </form>
     </div>
   </div>
@@ -175,6 +175,11 @@
   <!-- Toast notifications -->
   <div id="toast" class="toast hidden"></div>
 
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore-compat.js"></script>
+  
   <script src="app.js"></script>
 </body>
 </html>
